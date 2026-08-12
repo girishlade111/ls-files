@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FileItem
 import com.example.data.util.*
-import com.example.ui.util.formatSize
+import com.example.ui.components.formatFileSize
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -31,7 +31,7 @@ fun CleanerScreen(
     onDeleteDuplicates: (List<File>) -> Unit,
     onDeleteLargeFiles: (List<FileItem>) -> Unit
 ) {
-    var selectedTab by remember { java.util.concurrent.atomic.AtomicInteger(0).let { mutableIntStateOf(0) } }
+    var selectedTab by remember { mutableIntStateOf(0) }
     val cleanerManager = remember { StorageCleanerManager() }
 
     var isScanningJunk by remember { mutableStateOf(false) }
@@ -226,7 +226,7 @@ fun JunkCleanerTab(
                         Column {
                             Text("Selected Junk", fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             Text(
-                                formatSize(totalSelectedSize),
+                                formatFileSize(totalSelectedSize),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -255,7 +255,7 @@ fun JunkCleanerTab(
                             headlineContent = { Text(item.file.name, fontWeight = FontWeight.Medium) },
                             supportingContent = { Text("${item.category.name} • ${path}", fontSize = 12.sp, maxLines = 1) },
                             trailingContent = {
-                                Text(formatSize(item.size), fontWeight = FontWeight.Bold)
+                                Text(formatFileSize(item.size), fontWeight = FontWeight.Bold)
                             },
                             leadingContent = {
                                 Checkbox(
@@ -282,7 +282,7 @@ fun DuplicateFinderTab(
 ) {
     val totalSelectedSize = groups.flatMap { it.files }
         .filter { selectedPaths.contains(it.path) }
-        .sumOf { it.size }
+        .sumOf { it.sizeBytes }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (isScanning) {
@@ -321,7 +321,7 @@ fun DuplicateFinderTab(
                         Column {
                             Text("Reclaim Space", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                             Text(
-                                formatSize(totalSelectedSize),
+                                formatFileSize(totalSelectedSize),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -353,7 +353,7 @@ fun DuplicateFinderTab(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Group #${groupIndex + 1} (${group.files.size} copies)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Text(formatSize(group.fileSize) + " each", fontSize = 13.sp)
+                                    Text(formatFileSize(group.fileSize) + " each", fontSize = 13.sp)
                                 }
                             }
                         }
@@ -385,7 +385,7 @@ fun LargeFilesTab(
     onToggleSelectPath: (String) -> Unit,
     onDelete: () -> Unit
 ) {
-    val totalSelectedSize = files.filter { selectedPaths.contains(it.path) }.sumOf { it.size }
+    val totalSelectedSize = files.filter { selectedPaths.contains(it.path) }.sumOf { it.sizeBytes }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (isScanning) {
@@ -424,7 +424,7 @@ fun LargeFilesTab(
                         Column {
                             Text("Selected Large Files", fontSize = 14.sp, color = MaterialTheme.colorScheme.onTertiaryContainer)
                             Text(
-                                formatSize(totalSelectedSize),
+                                formatFileSize(totalSelectedSize),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -448,7 +448,7 @@ fun LargeFilesTab(
                         ListItem(
                             headlineContent = { Text(file.name, fontWeight = FontWeight.Medium, maxLines = 1) },
                             supportingContent = { Text(file.path, fontSize = 11.sp, maxLines = 1) },
-                            trailingContent = { Text(formatSize(file.size), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
+                            trailingContent = { Text(formatFileSize(file.sizeBytes), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
                             leadingContent = {
                                 Checkbox(
                                     checked = isSelected,

@@ -378,7 +378,7 @@ fun MainAppScreen(
                                         val cleaner = com.example.data.util.StorageCleanerManager()
                                         val reclaimed = cleaner.deleteFiles(files)
                                         viewModel.refreshStorageInfo()
-                                        viewModel.emitSnackbar("Cleaned ${com.example.ui.util.formatSize(reclaimed)}")
+                                        viewModel.emitSnackbar("Cleaned ${com.example.ui.components.formatFileSize(reclaimed)}")
                                     }
                                 },
                                 onDeleteDuplicates = { files ->
@@ -386,7 +386,7 @@ fun MainAppScreen(
                                         val cleaner = com.example.data.util.StorageCleanerManager()
                                         val reclaimed = cleaner.deleteFiles(files)
                                         viewModel.refreshStorageInfo()
-                                        viewModel.emitSnackbar("Deleted duplicates: freed ${com.example.ui.util.formatSize(reclaimed)}")
+                                        viewModel.emitSnackbar("Deleted duplicates: freed ${com.example.ui.components.formatFileSize(reclaimed)}")
                                     }
                                 },
                                 onDeleteLargeFiles = { files ->
@@ -394,7 +394,7 @@ fun MainAppScreen(
                                         val cleaner = com.example.data.util.StorageCleanerManager()
                                         val reclaimed = cleaner.deleteFiles(files.map { java.io.File(it.path) })
                                         viewModel.refreshStorageInfo()
-                                        viewModel.emitSnackbar("Deleted large files: freed ${com.example.ui.util.formatSize(reclaimed)}")
+                                        viewModel.emitSnackbar("Deleted large files: freed ${com.example.ui.components.formatFileSize(reclaimed)}")
                                     }
                                 }
                             )

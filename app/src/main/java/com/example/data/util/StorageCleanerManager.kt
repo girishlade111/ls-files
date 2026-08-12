@@ -116,13 +116,11 @@ class StorageCleanerManager {
                 if (matchingFiles.size > 1) {
                     val fileItems = matchingFiles.map { f ->
                         FileItem(
-                            id = f.absolutePath,
                             name = f.name,
                             path = f.absolutePath,
-                            size = f.length(),
+                            sizeBytes = f.length(),
                             lastModified = f.lastModified(),
-                            isDirectory = false,
-                            extension = f.extension
+                            isDirectory = false
                         )
                     }
                     duplicateGroups.add(DuplicateGroup(hash, size, fileItems))
@@ -153,13 +151,11 @@ class StorageCleanerManager {
                     if (file.length() >= minSizeBytes) {
                         result.add(
                             FileItem(
-                                id = file.absolutePath,
                                 name = file.name,
                                 path = file.absolutePath,
-                                size = file.length(),
+                                sizeBytes = file.length(),
                                 lastModified = file.lastModified(),
-                                isDirectory = false,
-                                extension = file.extension
+                                isDirectory = false
                             )
                         )
                     }
@@ -173,7 +169,7 @@ class StorageCleanerManager {
             e.printStackTrace()
         }
 
-        result.sortedByDescending { it.size }
+        result.sortedByDescending { it.sizeBytes }
     }
 
     suspend fun deleteFiles(files: List<File>): Long = withContext(Dispatchers.IO) {
