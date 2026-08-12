@@ -1,0 +1,6 @@
+{
+  "name": "LS Files",
+  "description": "Enterprise-grade file manager with on-device indexing, cloud storage support, tags, safe folder, and smart search.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
