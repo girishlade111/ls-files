@@ -199,7 +199,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Storage info & Categories
-    private val _storageSpaceInfo = MutableStateFlow(StorageSpaceInfo(128_000_000_000L, 35_000_000_000L, 93_000_000_000L))
+    private val _storageSpaceInfo = MutableStateFlow(StorageSpaceInfo(0L, 0L, 0L))
     val storageSpaceInfo: StateFlow<StorageSpaceInfo> = _storageSpaceInfo.asStateFlow()
 
     private val _categorySizes = MutableStateFlow<Map<FileCategory, Long>>(emptyMap())

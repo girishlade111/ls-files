@@ -67,6 +67,7 @@ class MainActivity : FragmentActivity() {
         viewModel.refreshStorageInfo()
         viewModel.refreshCategories()
         viewModel.refreshRecentFiles()
+        viewModel.loadDirectory(viewModel.currentDirectoryPath.value)
     }
 }
 

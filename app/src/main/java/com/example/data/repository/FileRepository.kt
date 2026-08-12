@@ -42,8 +42,6 @@ class FileRepository(
     val rootPath: String = Environment.getExternalStorageDirectory().absolutePath
 
     init {
-        // Initialize sample folders & files if storage is blank to provide an out-of-the-box rich experience
-        ensureSampleFilesExist()
         ensureDefaultTags()
         // Trigger 30-day auto-purge job for files marked as isDeleted
         binAutoPurgeService.startAutoPurgeJob()
@@ -97,6 +95,21 @@ class FileRepository(
     }
 
     suspend fun getStorageSpaceInfo(): StorageSpaceInfo = withContext(Dispatchers.IO) {
+        try {
+            val path = Environment.getExternalStorageDirectory().path
+            val stat = android.os.StatFs(path)
+            val blockSize = stat.blockSizeLong
+            val totalBlocks = stat.blockCountLong
+            val availableBlocks = stat.availableBlocksLong
+            val total = totalBlocks * blockSize
+            val free = availableBlocks * blockSize
+            val used = (total - free).coerceAtLeast(0)
+            if (total > 0) {
+                return@withContext StorageSpaceInfo(totalBytes = total, freeBytes = free, usedBytes = used)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         val root = Environment.getExternalStorageDirectory()
         val total = root.totalSpace
         val free = root.freeSpace
@@ -212,7 +225,7 @@ class FileRepository(
         val rootDir = File(rootPath)
         val results = mutableListOf<File>()
         try {
-            scanCategoryRecursive(rootDir, category, results, depth = 0, maxDepth = 4)
+            scanCategoryRecursive(rootDir, category, results, depth = 0, maxDepth = 20)
         } catch (_: Exception) { }
         results.map { mapToFileItem(it) }
     }
@@ -224,7 +237,7 @@ class FileRepository(
             try {
                 if (f.name.startsWith(".")) continue
                 if (f.isDirectory) {
-                    if (f.name.equals("Android", ignoreCase = true) && depth == 0) continue
+                    if (dir.name.equals("Android", ignoreCase = true) && (f.name.equals("data", ignoreCase = true) || f.name.equals("obb", ignoreCase = true))) continue
                     scanCategoryRecursive(f, category, results, depth + 1, maxDepth)
                 } else {
                     if (determineCategory(f) == category) {
@@ -235,11 +248,11 @@ class FileRepository(
         }
     }
 
-    suspend fun getRecentFiles(limit: Int = 30): List<FileItem> = withContext(Dispatchers.IO) {
+    suspend fun getRecentFiles(limit: Int = 50): List<FileItem> = withContext(Dispatchers.IO) {
         val rootDir = File(rootPath)
         val filesList = mutableListOf<File>()
         try {
-            scanRecentRecursive(rootDir, filesList, depth = 0, maxDepth = 4)
+            scanRecentRecursive(rootDir, filesList, depth = 0, maxDepth = 20)
             filesList.sortByDescending { it.lastModified() }
         } catch (_: Exception) { }
         filesList.take(limit).map { mapToFileItem(it) }
@@ -252,7 +265,7 @@ class FileRepository(
             try {
                 if (f.name.startsWith(".")) continue
                 if (f.isDirectory) {
-                    if (f.name.equals("Android", ignoreCase = true) && depth == 0) continue
+                    if (dir.name.equals("Android", ignoreCase = true) && (f.name.equals("data", ignoreCase = true) || f.name.equals("obb", ignoreCase = true))) continue
                     scanRecentRecursive(f, results, depth + 1, maxDepth)
                 } else {
                     results.add(f)
@@ -267,7 +280,7 @@ class FileRepository(
 
         try {
             val rootDir = File(rootPath)
-            accumulateCategorySizes(rootDir, sizes, depth = 0, maxDepth = 4)
+            accumulateCategorySizes(rootDir, sizes, depth = 0, maxDepth = 20)
         } catch (_: Exception) { }
 
         // Apps category special case: get size from PackageManager safely
@@ -282,7 +295,7 @@ class FileRepository(
             try {
                 if (f.name.startsWith(".")) continue
                 if (f.isDirectory) {
-                    if (f.name.equals("Android", ignoreCase = true) && depth == 0) continue
+                    if (dir.name.equals("Android", ignoreCase = true) && (f.name.equals("data", ignoreCase = true) || f.name.equals("obb", ignoreCase = true))) continue
                     accumulateCategorySizes(f, sizes, depth + 1, maxDepth)
                 } else {
                     val cat = determineCategory(f)
@@ -764,7 +777,7 @@ class FileRepository(
     suspend fun buildOrUpdateSmartSearchIndex(onProgress: ((String) -> Unit)? = null): Int = withContext(Dispatchers.IO) {
         val rootDir = File(rootPath)
         val allFiles = mutableListOf<File>()
-        collectAllFiles(rootDir, allFiles, depth = 0, maxDepth = 4)
+        collectAllFiles(rootDir, allFiles, depth = 0, maxDepth = 20)
 
         var indexedCount = 0
         var ocrScannedCount = 0
@@ -813,7 +826,7 @@ class FileRepository(
             if (f.name.startsWith(".")) continue
             results.add(f)
             if (f.isDirectory) {
-                if (f.name.equals("Android", ignoreCase = true) && depth == 0) continue
+                if (dir.name.equals("Android", ignoreCase = true) && (f.name.equals("data", ignoreCase = true) || f.name.equals("obb", ignoreCase = true))) continue
                 collectAllFiles(f, results, depth + 1, maxDepth)
             }
         }
@@ -857,7 +870,7 @@ class FileRepository(
 
         val results = mutableListOf<File>()
         val rootDir = File(rootPath)
-        searchRecursive(rootDir, trimmedQuery.lowercase(), results, depth = 0, maxDepth = 4)
+        searchRecursive(rootDir, trimmedQuery.lowercase(), results, depth = 0, maxDepth = 20)
 
         val items = mutableListOf<FileItem>()
         for (f in results) {
@@ -882,7 +895,7 @@ class FileRepository(
                 results.add(f)
             }
             if (f.isDirectory) {
-                if (f.name.equals("Android", ignoreCase = true) && depth == 0) continue
+                if (dir.name.equals("Android", ignoreCase = true) && (f.name.equals("data", ignoreCase = true) || f.name.equals("obb", ignoreCase = true))) continue
                 searchRecursive(f, term, results, depth + 1, maxDepth)
             }
         }
