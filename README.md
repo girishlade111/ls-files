@@ -1,6 +1,6 @@
 # LS Files
 
-**Enterprise-grade file manager for Android** with on-device indexing, cloud storage support, tags, a safe folder, and smart search powered by Gemini AI.
+**Enterprise-grade file manager for Android** with on-device indexing, cloud storage support, tags, a safe folder, and smart search.
 
 LS Files is a modern, Jetpack Compose-based file manager that goes beyond simple browsing. It provides a complete toolkit for managing your device storage: category-based organization, a recoverable recycle bin with automatic 30-day purging, AI-assisted content search (Gemini OCR over your images), a PIN/biometric-protected safe folder, ZIP compression with live progress, and cloud account management — all on-device with a Room database.
 
