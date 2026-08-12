@@ -856,14 +856,20 @@ class FileRepository(
         }
     }
 
-    suspend fun moveToSafeFolder(fileItem: FileItem): Boolean = withContext(Dispatchers.IO) {
+    suspend fun moveToSafeFolder(fileItem: FileItem, pin: String? = null): Boolean = withContext(Dispatchers.IO) {
         val safeDir = File(context.filesDir, "safe_folder")
         if (!safeDir.exists()) safeDir.mkdirs()
 
         val source = File(fileItem.path)
         if (!source.exists()) return@withContext false
 
-        val safeTarget = File(safeDir, source.name)
+        val safeTarget = File(safeDir, source.name + if (pin != null) ".enc" else "")
+        if (pin != null && !source.isDirectory) {
+            val encrypted = com.example.data.util.SafeFolderEncryptor.encryptFile(source, safeTarget, pin)
+            if (encrypted) source.delete()
+            return@withContext encrypted
+        }
+
         val success = source.renameTo(safeTarget)
         if (!success) {
             if (source.isDirectory) {
@@ -881,17 +887,28 @@ class FileRepository(
         val safeDir = File(context.filesDir, "safe_folder")
         if (!safeDir.exists()) return@withContext emptyList()
 
-        safeDir.listFiles()?.map { mapToFileItem(it) } ?: emptyList()
+        safeDir.listFiles()?.map { file ->
+            val cleanName = if (file.name.endsWith(".enc")) file.name.removeSuffix(".enc") else file.name
+            mapToFileItem(file).copy(name = cleanName)
+        } ?: emptyList()
     }
 
-    suspend fun removeFromSafeFolder(fileItem: FileItem): Boolean = withContext(Dispatchers.IO) {
+    suspend fun removeFromSafeFolder(fileItem: FileItem, pin: String? = null): Boolean = withContext(Dispatchers.IO) {
         val source = File(fileItem.path)
         if (!source.exists()) return@withContext false
 
         val destDir = File(rootPath, "Documents")
         if (!destDir.exists()) destDir.mkdirs()
 
-        val target = File(destDir, source.name)
+        val cleanName = if (source.name.endsWith(".enc")) source.name.removeSuffix(".enc") else source.name
+        val target = File(destDir, cleanName)
+
+        if (pin != null && source.name.endsWith(".enc")) {
+            val decrypted = com.example.data.util.SafeFolderEncryptor.decryptFile(source, target, pin)
+            if (decrypted) source.delete()
+            return@withContext decrypted
+        }
+
         val success = source.renameTo(target)
         if (!success) {
             if (source.isDirectory) {

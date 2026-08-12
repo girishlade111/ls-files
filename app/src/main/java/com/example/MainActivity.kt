@@ -370,6 +370,42 @@ fun MainAppScreen(
                                 onBack = { viewModel.navigateTo(NavDestination.HOME) },
                                 onFileClick = { file -> viewingFile = file }
                             )
+
+                            NavDestination.CLEANER -> CleanerScreen(
+                                onBack = { viewModel.navigateTo(NavDestination.HOME) },
+                                onCleanJunk = { files ->
+                                    scope.launch {
+                                        val cleaner = com.example.data.util.StorageCleanerManager()
+                                        val reclaimed = cleaner.deleteFiles(files)
+                                        viewModel.refreshStorageInfo()
+                                        viewModel.emitSnackbar("Cleaned ${com.example.ui.util.formatSize(reclaimed)}")
+                                    }
+                                },
+                                onDeleteDuplicates = { files ->
+                                    scope.launch {
+                                        val cleaner = com.example.data.util.StorageCleanerManager()
+                                        val reclaimed = cleaner.deleteFiles(files)
+                                        viewModel.refreshStorageInfo()
+                                        viewModel.emitSnackbar("Deleted duplicates: freed ${com.example.ui.util.formatSize(reclaimed)}")
+                                    }
+                                },
+                                onDeleteLargeFiles = { files ->
+                                    scope.launch {
+                                        val cleaner = com.example.data.util.StorageCleanerManager()
+                                        val reclaimed = cleaner.deleteFiles(files.map { java.io.File(it.path) })
+                                        viewModel.refreshStorageInfo()
+                                        viewModel.emitSnackbar("Deleted large files: freed ${com.example.ui.util.formatSize(reclaimed)}")
+                                    }
+                                }
+                            )
+
+                            NavDestination.WIFI_TRANSFER -> WifiTransferScreen(
+                                onBack = { viewModel.navigateTo(NavDestination.HOME) }
+                            )
+
+                            NavDestination.TOOLS -> ToolsScreen(
+                                onBack = { viewModel.navigateTo(NavDestination.HOME) }
+                            )
                         }
                     }
                 }

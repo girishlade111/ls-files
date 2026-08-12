@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 enum class NavDestination {
-    HOME, BROWSE, TAGS, SEARCH, RECENT, BIN, SETTINGS, SAFE_FOLDER
+    HOME, BROWSE, TAGS, SEARCH, RECENT, BIN, SETTINGS, SAFE_FOLDER, CLEANER, WIFI_TRANSFER, TOOLS
 }
 
 sealed class UIEvent {
@@ -812,6 +812,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unlockSafeFolder(pin: String): Boolean {
+        // Support Decoy PIN (e.g. 0000 or 9999) which opens an empty decoy vault
+        if (pin == "0000" || pin == "9999") {
+            _isSafeFolderUnlocked.value = true
+            _safeFolderFiles.value = emptyList()
+            emitSnackbar("Decoy Vault Unlocked")
+            return true
+        }
+
         if (_safeFolderPin.value == pin || _safeFolderPin.value == null) {
             if (_safeFolderPin.value == null) {
                 _safeFolderPin.value = pin
@@ -849,7 +857,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun performRemoveFromSafeFolder(fileItem: FileItem) {
         viewModelScope.launch {
-            val success = repository.removeFromSafeFolder(fileItem)
+            val success = repository.removeFromSafeFolder(fileItem, _safeFolderPin.value)
             if (success) {
                 loadSafeFolderFiles()
                 loadDirectory(_currentDirectoryPath.value)

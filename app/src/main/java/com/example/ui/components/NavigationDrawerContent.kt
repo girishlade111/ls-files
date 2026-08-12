@@ -251,6 +251,69 @@ fun NavigationDrawerContent(
                     .testTag("drawer_nav_safe_folder")
             )
 
+            val isCleaner = currentDestination == NavDestination.CLEANER
+            NavigationDrawerItem(
+                label = { Text("Storage Cleaner") },
+                icon = {
+                    AnimatedNavIcon(
+                        selectedIcon = Icons.Filled.CleaningServices,
+                        unselectedIcon = Icons.Outlined.CleaningServices,
+                        isSelected = isCleaner,
+                        contentDescription = null
+                    )
+                },
+                selected = isCleaner,
+                onClick = {
+                    onDestinationSelected(NavDestination.CLEANER)
+                    onCloseDrawer()
+                },
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .testTag("drawer_nav_cleaner")
+            )
+
+            val isWifi = currentDestination == NavDestination.WIFI_TRANSFER
+            NavigationDrawerItem(
+                label = { Text("Wi-Fi PC Transfer") },
+                icon = {
+                    AnimatedNavIcon(
+                        selectedIcon = Icons.Filled.WifiTethering,
+                        unselectedIcon = Icons.Outlined.WifiTethering,
+                        isSelected = isWifi,
+                        contentDescription = null
+                    )
+                },
+                selected = isWifi,
+                onClick = {
+                    onDestinationSelected(NavDestination.WIFI_TRANSFER)
+                    onCloseDrawer()
+                },
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .testTag("drawer_nav_wifi")
+            )
+
+            val isTools = currentDestination == NavDestination.TOOLS
+            NavigationDrawerItem(
+                label = { Text("Media & Doc Tools") },
+                icon = {
+                    AnimatedNavIcon(
+                        selectedIcon = Icons.Filled.Build,
+                        unselectedIcon = Icons.Outlined.Build,
+                        isSelected = isTools,
+                        contentDescription = null
+                    )
+                },
+                selected = isTools,
+                onClick = {
+                    onDestinationSelected(NavDestination.TOOLS)
+                    onCloseDrawer()
+                },
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .testTag("drawer_nav_tools")
+            )
+
             val isBin = currentDestination == NavDestination.BIN
             NavigationDrawerItem(
                 label = { Text("Recycle Bin") },
