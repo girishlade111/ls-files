@@ -1,8 +1,12 @@
 package com.example.data.repository
 
+import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Environment
+import android.os.storage.StorageManager
+import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import com.example.data.db.*
 import com.example.data.model.*
@@ -23,6 +27,8 @@ import java.util.zip.ZipOutputStream
 
 import com.example.service.BinAutoPurgeService
 import com.example.worker.BinPurgeWorker
+
+data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 class FileRepository(
     private val context: Context,
