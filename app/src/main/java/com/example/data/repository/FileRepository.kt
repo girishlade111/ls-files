@@ -102,6 +102,22 @@ class FileRepository(
 
     suspend fun getStorageSpaceInfo(): StorageSpaceInfo = withContext(Dispatchers.IO) {
         try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val storageStatsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as? StorageStatsManager
+                if (storageStatsManager != null) {
+                    val total = storageStatsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
+                    val free = storageStatsManager.getFreeBytes(StorageManager.UUID_DEFAULT)
+                    val used = (total - free).coerceAtLeast(0L)
+                    if (total > 0L) {
+                        return@withContext StorageSpaceInfo(totalBytes = total, freeBytes = free, usedBytes = used)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
             val path = Environment.getExternalStorageDirectory().path
             val stat = android.os.StatFs(path)
             val blockSize = stat.blockSizeLong
@@ -109,8 +125,8 @@ class FileRepository(
             val availableBlocks = stat.availableBlocksLong
             val total = totalBlocks * blockSize
             val free = availableBlocks * blockSize
-            val used = (total - free).coerceAtLeast(0)
-            if (total > 0) {
+            val used = (total - free).coerceAtLeast(0L)
+            if (total > 0L) {
                 return@withContext StorageSpaceInfo(totalBytes = total, freeBytes = free, usedBytes = used)
             }
         } catch (e: Exception) {
@@ -119,7 +135,7 @@ class FileRepository(
         val root = Environment.getExternalStorageDirectory()
         val total = root.totalSpace
         val free = root.freeSpace
-        val used = (total - free).coerceAtLeast(0)
+        val used = (total - free).coerceAtLeast(0L)
         StorageSpaceInfo(totalBytes = total, freeBytes = free, usedBytes = used)
     }
 
