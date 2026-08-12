@@ -1,16 +1,23 @@
 package com.example.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
+import android.media.ExifInterface
 import android.media.MediaPlayer
 import android.os.ParcelFileDescriptor
-import android.widget.MediaController
 import android.widget.VideoView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -80,8 +88,8 @@ fun FileViewerDialog(
     }
 
     val isTextOrCode = remember(mimeType, ext) {
-        file.category == FileCategory.DOCUMENTS || mimeType.startsWith("text/") ||
-                listOf("txt", "json", "xml", "csv", "md", "kt", "java", "py", "js", "html", "htm", "css", "log", "rtf").contains(ext)
+        mimeType.startsWith("text/") ||
+                listOf("txt", "json", "xml", "csv", "md", "kt", "java", "py", "js", "html", "htm", "css", "log", "rtf", "sh", "yaml", "yml").contains(ext)
     }
 
     Dialog(
@@ -195,7 +203,7 @@ fun FileViewerDialog(
                         isAudio -> BuiltInAudioPlayer(file = file)
                         isPdf -> BuiltInPdfViewer(file = file)
                         isTextOrCode -> BuiltInTextViewer(file = file)
-                        else -> GenericFilePreviewCard(file = file)
+                        else -> GenericFilePreviewCard(file = file, onOpenWith = onOpenWith, onDismiss = onDismiss)
                     }
                 }
 
@@ -276,7 +284,25 @@ fun BuiltInImageViewer(file: FileItem) {
                 val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
                 val decoded = BitmapFactory.decodeFile(file.path, decodeOptions)
                 if (decoded != null) {
-                    bitmap = decoded.asImageBitmap()
+                    val rotated = try {
+                        val exif = ExifInterface(file.path)
+                        val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                        val degrees = when (orientation) {
+                            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                            else -> 0f
+                        }
+                        if (degrees != 0f) {
+                            val matrix = Matrix().apply { postRotate(degrees) }
+                            Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+                        } else {
+                            decoded
+                        }
+                    } catch (_: Exception) {
+                        decoded
+                    }
+                    bitmap = rotated.asImageBitmap()
                 } else {
                     errorMsg = "Unable to decode image file"
                 }
@@ -291,6 +317,18 @@ fun BuiltInImageViewer(file: FileItem) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (scale > 1.2f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2.5f
+                        }
+                    }
+                )
+            }
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(0.8f, 5f)
@@ -313,6 +351,26 @@ fun BuiltInImageViewer(file: FileItem) {
                         translationY = offset.y
                     )
             )
+
+            // Reset zoom float button when zoomed in
+            if (scale > 1.05f || offset != Offset.Zero) {
+                IconButton(
+                    onClick = {
+                        scale = 1f
+                        offset = Offset.Zero
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ZoomInMap,
+                        contentDescription = "Reset Zoom",
+                        tint = Color.White
+                    )
+                }
+            }
         } else if (isLoading) {
             CircularProgressIndicator(color = Color.White)
         } else if (errorMsg != null) {
@@ -328,12 +386,37 @@ fun BuiltInImageViewer(file: FileItem) {
 @Composable
 fun BuiltInVideoPlayer(file: FileItem) {
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
+    var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
+
+    var isPlaying by remember { mutableStateOf(false) }
+    var isPrepared by remember { mutableStateOf(false) }
+    var currentPosition by remember { mutableIntStateOf(0) }
+    var duration by remember { mutableIntStateOf(1) }
+    var showControls by remember { mutableStateOf(true) }
+    var isMuted by remember { mutableStateOf(false) }
+
+    // Auto-hide controls after 4s when playing
+    LaunchedEffect(showControls, isPlaying) {
+        if (showControls && isPlaying) {
+            delay(4000)
+            showControls = false
+        }
+    }
+
+    // Sync position timer
+    LaunchedEffect(isPlaying, isPrepared) {
+        while (isPlaying && isPrepared && videoViewRef != null) {
+            currentPosition = videoViewRef?.currentPosition ?: 0
+            delay(250)
+        }
+    }
 
     DisposableEffect(file.path) {
         onDispose {
             try {
                 videoViewRef?.stopPlayback()
                 videoViewRef = null
+                mediaPlayerRef = null
             } catch (_: Exception) {}
         }
     }
@@ -341,19 +424,30 @@ fun BuiltInVideoPlayer(file: FileItem) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { showControls = !showControls }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         AndroidView(
             factory = { ctx ->
                 VideoView(ctx).apply {
-                    val mediaController = MediaController(ctx)
-                    mediaController.setAnchorView(this)
-                    setMediaController(mediaController)
                     setVideoPath(file.path)
                     setOnPreparedListener { mp ->
+                        mediaPlayerRef = mp
                         mp.isLooping = false
+                        duration = mp.duration.coerceAtLeast(1)
+                        isPrepared = true
                         start()
+                        isPlaying = true
+                    }
+                    setOnCompletionListener {
+                        isPlaying = false
+                        currentPosition = duration
+                        showControls = true
                     }
                     setOnErrorListener { _, _, _ -> true }
                     videoViewRef = this
@@ -364,6 +458,147 @@ fun BuiltInVideoPlayer(file: FileItem) {
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        if (!isPrepared) {
+            CircularProgressIndicator(color = Color.White)
+        }
+
+        // Custom Overlay Controls
+        AnimatedVisibility(
+            visible = showControls && isPrepared,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+            ) {
+                // Center Controls: Rewind 10s | Play/Pause | Fast Forward 10s
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            val newPos = (currentPosition - 10000).coerceAtLeast(0)
+                            currentPosition = newPos
+                            videoViewRef?.seekTo(newPos)
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Replay10,
+                            contentDescription = "Rewind 10s",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            val vv = videoViewRef ?: return@IconButton
+                            if (isPlaying) {
+                                vv.pause()
+                                isPlaying = false
+                            } else {
+                                if (currentPosition >= duration) {
+                                    vv.seekTo(0)
+                                    currentPosition = 0
+                                }
+                                vv.start()
+                                isPlaying = true
+                            }
+                        },
+                        modifier = Modifier
+                            .size(64.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            val newPos = (currentPosition + 10000).coerceAtMost(duration)
+                            currentPosition = newPos
+                            videoViewRef?.seekTo(newPos)
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Forward10,
+                            contentDescription = "Forward 10s",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                // Bottom Controls: Time Bar & Mute Button
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Slider(
+                        value = currentPosition.toFloat(),
+                        onValueChange = { newValue ->
+                            currentPosition = newValue.toInt()
+                            videoViewRef?.seekTo(currentPosition)
+                        },
+                        valueRange = 0f..duration.toFloat(),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${formatDurationMs(currentPosition.toLong())} / ${formatDurationMs(duration.toLong())}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White
+                        )
+
+                        IconButton(
+                            onClick = {
+                                val mp = mediaPlayerRef ?: return@IconButton
+                                if (isMuted) {
+                                    mp.setVolume(1f, 1f)
+                                    isMuted = false
+                                } else {
+                                    mp.setVolume(0f, 0f)
+                                    isMuted = true
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isMuted) Icons.Outlined.VolumeOff else Icons.Outlined.VolumeUp,
+                                contentDescription = if (isMuted) "Unmute" else "Mute",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -402,7 +637,7 @@ fun BuiltInAudioPlayer(file: FileItem) {
     LaunchedEffect(isPlaying) {
         while (isPlaying && mediaPlayer != null) {
             currentPosition = mediaPlayer?.currentPosition ?: 0
-            delay(500)
+            delay(250)
         }
     }
 
@@ -581,8 +816,10 @@ fun BuiltInPdfViewer(file: FileItem) {
 
 @Composable
 fun BuiltInTextViewer(file: FileItem) {
+    val context = LocalContext.current
     var textContent by remember { mutableStateOf<String?>(null) }
     var isLoadingText by remember { mutableStateOf(true) }
+    var isCopied by remember { mutableStateOf(false) }
 
     LaunchedEffect(file.path) {
         isLoadingText = true
@@ -615,17 +852,47 @@ fun BuiltInTextViewer(file: FileItem) {
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(14.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = textContent!!,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${textContent!!.length} characters",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText(file.name, textContent)
+                                clipboard.setPrimaryClip(clip)
+                                isCopied = true
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isCopied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
+                                contentDescription = "Copy Text",
+                                tint = if (isCopied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Divider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(14.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = textContent!!,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
@@ -633,7 +900,24 @@ fun BuiltInTextViewer(file: FileItem) {
 }
 
 @Composable
-fun GenericFilePreviewCard(file: FileItem) {
+fun GenericFilePreviewCard(
+    file: FileItem,
+    onOpenWith: ((FileItem) -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null
+) {
+    val ext = remember(file.path) { File(file.path).extension.lowercase() }
+    val (icon, formatLabel) = remember(ext) {
+        when (ext) {
+            "doc", "docx" -> Icons.Outlined.Description to "Microsoft Word Document"
+            "xls", "xlsx", "csv" -> Icons.Outlined.TableChart to "Spreadsheet Document"
+            "ppt", "pptx" -> Icons.Outlined.Slideshow to "PowerPoint Presentation"
+            "zip", "rar", "7z", "tar", "gz" -> Icons.Outlined.FolderZip to "Compressed Archive"
+            "apk" -> Icons.Outlined.Android to "Android Application Package"
+            "html", "htm" -> Icons.Outlined.Code to "HTML Web Document"
+            else -> Icons.Outlined.InsertDriveFile to "File Document (${ext.uppercase()})"
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -641,23 +925,61 @@ fun GenericFilePreviewCard(file: FileItem) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Outlined.InsertDriveFile,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(80.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(
                 text = file.name,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center
             )
+
             Spacer(modifier = Modifier.height(4.dp))
+
             Text(
-                text = "Tap 'Open in other apps' below to open with compatible installed apps",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = formatLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Tap 'Open in other apps' to view this file using installed compatible apps on your device.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            if (onOpenWith != null) {
+                Button(
+                    onClick = {
+                        onDismiss?.invoke()
+                        onOpenWith(file)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(Icons.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open in other apps")
+                }
+            }
         }
     }
 }
