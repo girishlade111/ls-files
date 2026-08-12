@@ -55,25 +55,66 @@ private fun Drawable.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap {
 }
 
 fun resolveFileMimeType(fileItem: FileItem): String {
-    if (fileItem.mimeType.isNotBlank() && fileItem.mimeType != "application/octet-stream" && fileItem.mimeType != "*/*") {
-        return fileItem.mimeType
-    }
     val file = File(fileItem.path)
     val ext = file.extension.lowercase()
     val mapMime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
     if (!mapMime.isNullOrBlank()) return mapMime
 
+    if (fileItem.mimeType.isNotBlank() && fileItem.mimeType != "application/octet-stream" && fileItem.mimeType != "*/*") {
+        return fileItem.mimeType
+    }
+
     return when (ext) {
-        "txt", "log", "json", "xml", "csv", "md", "kt", "java", "py", "js", "html", "css" -> "text/plain"
         "png" -> "image/png"
         "jpg", "jpeg" -> "image/jpeg"
         "gif" -> "image/gif"
         "webp" -> "image/webp"
+        "bmp" -> "image/bmp"
+        "heic" -> "image/heic"
+        "heif" -> "image/heif"
+        "svg" -> "image/svg+xml"
+
+        "mp4" -> "video/mp4"
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "avi" -> "video/x-msvideo"
+        "mov" -> "video/quicktime"
+        "3gp" -> "video/3gpp"
+        "flv" -> "video/x-flv"
+        "wmv" -> "video/x-ms-wmv"
+
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "aac" -> "audio/aac"
+        "flac" -> "audio/flac"
+        "m4a" -> "audio/mp4"
+        "ogg" -> "audio/ogg"
+
         "pdf" -> "application/pdf"
-        "mp3", "wav", "aac", "flac", "m4a", "ogg" -> "audio/*"
-        "mp4", "mkv", "webm", "avi", "3gp" -> "video/*"
-        "zip", "rar", "7z", "tar", "gz" -> "application/zip"
+        "doc" -> "application/msword"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "xls" -> "application/vnd.ms-excel"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "ppt" -> "application/vnd.ms-powerpoint"
+        "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "rtf" -> "application/rtf"
+
+        "txt", "log" -> "text/plain"
+        "html", "htm" -> "text/html"
+        "json" -> "application/json"
+        "xml" -> "text/xml"
+        "csv" -> "text/csv"
+        "md" -> "text/markdown"
+        "js" -> "text/javascript"
+        "css" -> "text/css"
+
         "apk" -> "application/vnd.android.package-archive"
+        "zip" -> "application/zip"
+        "rar" -> "application/x-rar-compressed"
+        "7z" -> "application/x-7z-compressed"
+        "tar" -> "application/x-tar"
+        "gz" -> "application/gzip"
+
         else -> "*/*"
     }
 }
@@ -100,32 +141,54 @@ fun queryAppsForFile(context: Context, fileItem: FileItem): Pair<List<AppHandler
     val viewIntent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, mimeType)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
     }
 
     val pm = context.packageManager
-    val resolvedList = pm.queryIntentActivities(
+    var resolvedList = pm.queryIntentActivities(
         viewIntent,
         PackageManager.MATCH_DEFAULT_ONLY
-    ).ifEmpty {
-        pm.queryIntentActivities(viewIntent, 0)
+    )
+    if (resolvedList.isEmpty()) {
+        resolvedList = pm.queryIntentActivities(viewIntent, 0)
+    }
+
+    if (resolvedList.isEmpty() && mimeType != "*/*") {
+        val genericType = when {
+            mimeType.startsWith("image/") -> "image/*"
+            mimeType.startsWith("video/") -> "video/*"
+            mimeType.startsWith("audio/") -> "audio/*"
+            mimeType.startsWith("text/") -> "text/*"
+            else -> "*/*"
+        }
+        val genericIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, genericType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        resolvedList = pm.queryIntentActivities(genericIntent, PackageManager.MATCH_DEFAULT_ONLY).ifEmpty {
+            pm.queryIntentActivities(genericIntent, 0)
+        }
     }
 
     val defaultResolve = pm.resolveActivity(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
     val defaultPackage = defaultResolve?.activityInfo?.packageName
 
-    val apps = resolvedList.map { resolveInfo ->
-        val label = resolveInfo.loadLabel(pm).toString()
-        val icon = try { resolveInfo.loadIcon(pm) } catch (e: Exception) { null }
-        val pkg = resolveInfo.activityInfo.packageName
-        val act = resolveInfo.activityInfo.name
-        AppHandlerInfo(
-            label = label,
-            packageName = pkg,
-            activityName = act,
-            icon = icon,
-            isDefault = (pkg == defaultPackage)
-        )
-    }.distinctBy { "${it.packageName}/${it.activityName}" }
+    val myPackageName = context.packageName
+    val apps = resolvedList
+        .filter { it.activityInfo.packageName != myPackageName }
+        .map { resolveInfo ->
+            val label = resolveInfo.loadLabel(pm).toString()
+            val icon = try { resolveInfo.loadIcon(pm) } catch (e: Exception) { null }
+            val pkg = resolveInfo.activityInfo.packageName
+            val act = resolveInfo.activityInfo.name
+            AppHandlerInfo(
+                label = label,
+                packageName = pkg,
+                activityName = act,
+                icon = icon,
+                isDefault = (pkg == defaultPackage)
+            )
+        }.distinctBy { "${it.packageName}/${it.activityName}" }
 
     return Pair(apps, viewIntent)
 }
