@@ -254,12 +254,11 @@ class FileTransferService : Service() {
 
         private fun saveUploadedFile(inputStream: InputStream, boundary: String, targetDir: File) {
             try {
-                val boundaryBytes = ("--" + boundary).toByteArray(Charsets.UTF_8)
+                val boundaryPattern = ("--" + boundary).toByteArray(Charsets.UTF_8)
                 val buffer = ByteArray(8192)
                 var bytesRead: Int
                 var filename = "uploaded_file_${System.currentTimeMillis()}"
 
-                val baos = ByteArrayOutputStream()
                 var headerDone = false
                 var lineBaos = ByteArrayOutputStream()
 
@@ -268,7 +267,10 @@ class FileTransferService : Service() {
                     if (bytesRead == '\n'.code) {
                         val line = lineBaos.toString("UTF-8").trim()
                         if (line.contains("filename=")) {
-                            filename = line.substringAfter("filename=").replace("\"", "").trim()
+                            val extracted = line.substringAfter("filename=").replace("\"", "").trim()
+                            if (extracted.isNotEmpty()) {
+                                filename = File(extracted).name
+                            }
                         }
                         if (line.isEmpty() && headerDone) {
                             break
@@ -282,7 +284,9 @@ class FileTransferService : Service() {
                     }
                 }
 
+                if (!targetDir.exists()) targetDir.mkdirs()
                 val targetFile = File(targetDir, filename)
+
                 FileOutputStream(targetFile).use { fos ->
                     val fileBuffer = ByteArray(8192)
                     var read: Int
@@ -290,9 +294,49 @@ class FileTransferService : Service() {
                         fos.write(fileBuffer, 0, read)
                     }
                 }
+
+                // Strip trailing boundary from uploaded file
+                val fileLen = targetFile.length()
+                if (fileLen > 0) {
+                    val searchWindow = (1024 * 4).coerceAtMost(fileLen.toInt())
+                    RandomAccessFile(targetFile, "rw").use { raf ->
+                        val startPos = fileLen - searchWindow
+                        raf.seek(startPos)
+                        val tailBuffer = ByteArray(searchWindow)
+                        raf.readFully(tailBuffer)
+
+                        val crlfBoundary = ("\r\n--" + boundary).toByteArray(Charsets.UTF_8)
+                        val plainBoundary = ("--" + boundary).toByteArray(Charsets.UTF_8)
+
+                        var matchOffset = indexOfBytes(tailBuffer, crlfBoundary)
+                        if (matchOffset == -1) {
+                            matchOffset = indexOfBytes(tailBuffer, plainBoundary)
+                        }
+
+                        if (matchOffset != -1) {
+                            val cleanLength = startPos + matchOffset
+                            raf.setLength(cleanLength)
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+
+        private fun indexOfBytes(source: ByteArray, target: ByteArray): Int {
+            if (target.isEmpty() || source.size < target.size) return -1
+            for (i in 0..(source.size - target.size)) {
+                var found = true
+                for (j in target.indices) {
+                    if (source[i + j] != target[j]) {
+                        found = false
+                        break
+                    }
+                }
+                if (found) return i
+            }
+            return -1
         }
     }
 }

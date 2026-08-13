@@ -48,12 +48,32 @@ class BinAutoPurgeService(
         val threshold = System.currentTimeMillis() - PURGE_RETENTION_MILLIS
         Log.d(TAG, "Starting 30-day auto-purge job with threshold timestamp: $threshold")
 
-        val expiredFiles: List<FileEntity> = fileDao.getExpiredDeletedFiles(threshold)
         var purgedCount = 0
 
-        for (fileEntity in expiredFiles) {
-            try {
-                // Delete physical file or directory if it exists on storage
+        // 1. Purge expired bin items from binDao and physical ls_bin storage
+        try {
+            val expiredBinItems = binDao.getExpiredBinItems(threshold)
+            for (binItem in expiredBinItems) {
+                val physicalFile = File(binItem.filePath)
+                if (physicalFile.exists()) {
+                    if (physicalFile.isDirectory) {
+                        physicalFile.deleteRecursively()
+                    } else {
+                        physicalFile.delete()
+                    }
+                }
+                binDao.deleteBinItem(binItem.filePath)
+                purgedCount++
+                Log.d(TAG, "Successfully purged expired bin file: ${binItem.filePath}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error purging expired bin items: ${e.message}", e)
+        }
+
+        // 2. Clean up legacy fileDao expired items if present
+        try {
+            val expiredFiles = fileDao.getExpiredDeletedFiles(threshold)
+            for (fileEntity in expiredFiles) {
                 val physicalFile = File(fileEntity.path)
                 if (physicalFile.exists()) {
                     if (fileEntity.isDirectory) {
@@ -62,23 +82,17 @@ class BinAutoPurgeService(
                         physicalFile.delete()
                     }
                 }
-
-                // Delete from Room DB tables
                 fileDao.deleteById(fileEntity.id)
                 binDao.deleteBinItem(fileEntity.path)
                 purgedCount++
-                Log.d(TAG, "Successfully purged expired file: ${fileEntity.path}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error purging file ${fileEntity.path}: ${e.message}", e)
             }
+            fileDao.deleteExpiredFiles(threshold)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error purging legacy deleted files: ${e.message}", e)
         }
 
-        // Clean up any remaining expired entries directly in database
-        val additionalDeleted = fileDao.deleteExpiredFiles(threshold)
-        val totalPurged = purgedCount.coerceAtLeast(additionalDeleted)
-
-        Log.d(TAG, "Auto-purge job completed. Total files purged: $totalPurged")
-        totalPurged
+        Log.d(TAG, "Auto-purge job completed. Total files purged: $purgedCount")
+        purgedCount
     }
 
     /**

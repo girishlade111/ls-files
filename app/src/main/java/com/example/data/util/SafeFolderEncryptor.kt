@@ -26,6 +26,7 @@ object SafeFolderEncryptor {
     }
 
     suspend fun encryptFile(inputFile: File, outputFile: File, pin: String): Boolean = withContext(Dispatchers.IO) {
+        if (!inputFile.exists()) return@withContext false
         try {
             val key = deriveKey(pin)
             val cipher = Cipher.getInstance(ALGORITHM)
@@ -51,11 +52,15 @@ object SafeFolderEncryptor {
             true
         } catch (e: Exception) {
             e.printStackTrace()
+            if (outputFile.exists()) {
+                outputFile.delete()
+            }
             false
         }
     }
 
     suspend fun decryptFile(inputFile: File, outputFile: File, pin: String): Boolean = withContext(Dispatchers.IO) {
+        if (!inputFile.exists() || inputFile.length() < 16) return@withContext false
         try {
             val key = deriveKey(pin)
             FileInputStream(inputFile).use { fis ->
@@ -81,6 +86,9 @@ object SafeFolderEncryptor {
             true
         } catch (e: Exception) {
             e.printStackTrace()
+            if (outputFile.exists()) {
+                outputFile.delete()
+            }
             false
         }
     }
