@@ -463,10 +463,10 @@ class FileRepository(
                     } catch (_: Exception) { }
                 }
             }
-            if (totalSize > 0L) totalSize else 62_200_000_000L
+            totalSize
         } catch (e: Exception) {
             e.printStackTrace()
-            7_800_000_000L
+            0L
         }
     }
 
@@ -722,11 +722,12 @@ class FileRepository(
                 }
             }
             mapToFileItem(zipFile)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (e: Throwable) {
             if (zipFile.exists()) {
                 zipFile.delete()
             }
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            e.printStackTrace()
             null
         }
     }
@@ -830,7 +831,8 @@ class FileRepository(
                 }
             }
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
             false
         }
@@ -903,7 +905,7 @@ class FileRepository(
         val cleanName = if (source.name.endsWith(".enc")) source.name.removeSuffix(".enc") else source.name
         val target = File(destDir, cleanName)
 
-        if (pin != null && source.name.endsWith(".enc")) {
+        if (pin != null && !source.isDirectory && source.name.endsWith(".enc")) {
             val decrypted = com.example.data.util.SafeFolderEncryptor.decryptFile(source, target, pin)
             if (decrypted) source.delete()
             return@withContext decrypted

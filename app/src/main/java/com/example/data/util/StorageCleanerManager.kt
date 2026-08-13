@@ -198,12 +198,32 @@ class StorageCleanerManager {
 
     private fun calculateFastHash(file: File): String? {
         return try {
+            val len = file.length()
+            if (len <= 0) return null
             val md = MessageDigest.getInstance("SHA-256")
-            FileInputStream(file).use { fis ->
-                val buffer = ByteArray(8192)
-                val bytesRead = fis.read(buffer)
-                if (bytesRead > 0) {
-                    md.update(buffer, 0, bytesRead)
+            md.update(len.toString().toByteArray(Charsets.UTF_8))
+
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                val bufferSize = 8192
+                // 1. Read Head (first 8KB)
+                val headBuffer = ByteArray(bufferSize.coerceAtMost(len.toInt()))
+                val headRead = raf.read(headBuffer)
+                if (headRead > 0) md.update(headBuffer, 0, headRead)
+
+                // 2. Read Middle (8KB at 50% offset) if file > 16KB
+                if (len > bufferSize * 2) {
+                    raf.seek(len / 2)
+                    val midBuffer = ByteArray(bufferSize)
+                    val midRead = raf.read(midBuffer)
+                    if (midRead > 0) md.update(midBuffer, 0, midRead)
+                }
+
+                // 3. Read Tail (last 8KB) if file > 32KB
+                if (len > bufferSize * 4) {
+                    raf.seek(len - bufferSize)
+                    val tailBuffer = ByteArray(bufferSize)
+                    val tailRead = raf.read(tailBuffer)
+                    if (tailRead > 0) md.update(tailBuffer, 0, tailRead)
                 }
             }
             val digest = md.digest()
