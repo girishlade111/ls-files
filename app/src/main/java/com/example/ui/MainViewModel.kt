@@ -812,7 +812,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unlockSafeFolder(pin: String): Boolean {
-        // Support Decoy PIN (e.g. 0000 or 9999) which opens an empty decoy vault
+        if (_safeFolderPin.value == pin) {
+            _isSafeFolderUnlocked.value = true
+            loadSafeFolderFiles()
+            return true
+        }
+
+        // Support Decoy PIN (e.g. 0000 or 9999) only if user's actual PIN is not 0000/9999
         if (pin == "0000" || pin == "9999") {
             _isSafeFolderUnlocked.value = true
             _safeFolderFiles.value = emptyList()
@@ -820,15 +826,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return true
         }
 
-        if (_safeFolderPin.value == pin || _safeFolderPin.value == null) {
-            if (_safeFolderPin.value == null) {
-                _safeFolderPin.value = pin
-                viewModelScope.launch {
-                    try {
-                        repository.settingsDao.setSetting(AppSettingEntity("safe_folder_pin", pin))
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+        if (_safeFolderPin.value == null) {
+            _safeFolderPin.value = pin
+            viewModelScope.launch {
+                try {
+                    repository.settingsDao.setSetting(AppSettingEntity("safe_folder_pin", pin))
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
             _isSafeFolderUnlocked.value = true
