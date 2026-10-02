@@ -490,3 +490,9 @@ Visual diff verification:
 ## License
 
 This project is provided for evaluation and development use. No license file is present in the repository — contact the project owner before redistributing.
+
+---
+
+## Credits
+
+Built by [Girish Lade](https://ladestack.in) — part of the [LadeStack](https://ladestack.in) family of free, privacy-first tools.
